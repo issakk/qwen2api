@@ -291,8 +291,8 @@ func main() {
 
 	http.Handle("/api/", authMiddleware(apiMux))
 
-	log.Println("Starting proxy server on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	log.Println("Starting proxy server on :17591")
+	if err := http.ListenAndServe(":17591", nil); err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
 
