@@ -14,8 +14,7 @@ import (
 type Token struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-	ExpiresAt    int64  `json:"expires_at"`
+	ExpiryDate   int64  `json:"expiry_date"`
 }
 
 // RefreshResponse defines the structure for the new token refresh API response.

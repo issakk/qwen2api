@@ -54,8 +54,10 @@ func startTokenRefreshRoutine() {
 				}
 				tokens[i].AccessToken = newAccessToken
 				tokens[i].RefreshToken = newRefreshToken
-				tokens[i].ExpiresIn = expiresIn
-				tokens[i].ExpiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second).Unix()
+				// Calculate ExpiryDate from expiresIn
+				if expiresIn > 0 {
+					tokens[i].ExpiryDate = time.Now().Add(time.Duration(expiresIn) * time.Second).UnixMilli()
+				}
 				log.Printf("Successfully refreshed token for index %d", i)
 			}
 			if err := internal.SaveTokens(tokens); err != nil {
@@ -193,9 +195,12 @@ func uploadTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If ExpiresIn is provided, calculate ExpiresAt
-	if newToken.ExpiresIn > 0 {
-		newToken.ExpiresAt = time.Now().Add(time.Duration(newToken.ExpiresIn) * time.Second).Unix()
+	// If ExpiryDate is not provided, calculate it from ExpiresIn (if available, though not in the new structure)
+	// For now, we assume ExpiryDate is always provided by the client.
+	if newToken.ExpiryDate == 0 {
+		// This case should ideally not happen if the client provides the expiry_date.
+		// We can set a default or return an error. For now, let's log a warning.
+		log.Println("Warning: newToken does not have an ExpiryDate. It will be set to 0.")
 	}
 
 	tokensMux.Lock()
@@ -252,8 +257,8 @@ func tokenStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 		var expiresAtStr string
 		var expiresInSeconds int64
-		if token.ExpiresAt > 0 {
-			expiresAtTime := time.Unix(token.ExpiresAt, 0)
+		if token.ExpiryDate > 0 {
+			expiresAtTime := time.UnixMilli(token.ExpiryDate)
 			expiresAtStr = expiresAtTime.Format("2006-01-02 15:04:05")
 			expiresInSeconds = int64(time.Until(expiresAtTime).Seconds())
 		}
