@@ -194,7 +194,18 @@ func uploadTokenHandler(w http.ResponseWriter, r *http.Request) {
 	tokensMux.Lock()
 	defer tokensMux.Unlock()
 
-	tokens = append(tokens, newToken)
+	var found bool
+	for i, token := range tokens {
+		if token.RefreshToken == newToken.RefreshToken {
+			tokens[i] = newToken
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		tokens = append(tokens, newToken)
+	}
 
 	if err := internal.SaveTokens(tokens); err != nil {
 		http.Error(w, "Failed to save token", http.StatusInternalServerError)
