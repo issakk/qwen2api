@@ -47,13 +47,15 @@ func startTokenRefreshRoutine() {
 			log.Println("Starting token refresh process...")
 			tokensMux.Lock()
 			for i, token := range tokens {
-				newAccessToken, newRefreshToken, err := internal.RefreshToken(token.RefreshToken)
+				newAccessToken, newRefreshToken, expiresIn, err := internal.RefreshToken(token.RefreshToken)
 				if err != nil {
 					log.Printf("Failed to refresh token for index %d: %v", i, err)
 					continue
 				}
 				tokens[i].AccessToken = newAccessToken
 				tokens[i].RefreshToken = newRefreshToken
+				tokens[i].ExpiresIn = expiresIn
+				tokens[i].ExpiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second).Unix()
 				log.Printf("Successfully refreshed token for index %d", i)
 			}
 			if err := internal.SaveTokens(tokens); err != nil {
@@ -191,6 +193,11 @@ func uploadTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If ExpiresIn is provided, calculate ExpiresAt
+	if newToken.ExpiresIn > 0 {
+		newToken.ExpiresAt = time.Now().Add(time.Duration(newToken.ExpiresIn) * time.Second).Unix()
+	}
+
 	tokensMux.Lock()
 	defer tokensMux.Unlock()
 
@@ -220,7 +227,9 @@ func uploadTokenHandler(w http.ResponseWriter, r *http.Request) {
 
 // TokenStatus defines the structure for displaying token status without exposing sensitive information.
 type TokenStatus struct {
-	AccessToken string `json:"access_token_preview"`
+	AccessToken      string `json:"access_token_preview"`
+	ExpiresAt        string `json:"expires_at"`
+	ExpiresInSeconds int64  `json:"expires_in_seconds"`
 }
 
 func tokenStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -240,7 +249,20 @@ func tokenStatusHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			preview = token.AccessToken
 		}
-		statusList = append(statusList, TokenStatus{AccessToken: preview})
+
+		var expiresAtStr string
+		var expiresInSeconds int64
+		if token.ExpiresAt > 0 {
+			expiresAtTime := time.Unix(token.ExpiresAt, 0)
+			expiresAtStr = expiresAtTime.Format("2006-01-02 15:04:05")
+			expiresInSeconds = int64(time.Until(expiresAtTime).Seconds())
+		}
+
+		statusList = append(statusList, TokenStatus{
+			AccessToken:      preview,
+			ExpiresAt:        expiresAtStr,
+			ExpiresInSeconds: expiresInSeconds,
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

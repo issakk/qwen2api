@@ -14,6 +14,8 @@ import (
 type Token struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	ExpiresAt    int64  `json:"expires_at"`
 }
 
 // RefreshResponse defines the structure for the new token refresh API response.
@@ -31,7 +33,7 @@ const (
 )
 
 // RefreshToken sends a request to refresh the access token.
-func RefreshToken(refreshToken string) (string, string, error) {
+func RefreshToken(refreshToken string) (string, string, int, error) {
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
@@ -39,25 +41,25 @@ func RefreshToken(refreshToken string) (string, string, error) {
 
 	req, err := http.NewRequest("POST", refreshURL, strings.NewReader(data.Encode()))
 	if err != nil {
-		return "", "", err
+		return "", "", 0, err
 	}
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", err
+		return "", "", 0, err
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", err
+		return "", "", 0, err
 	}
 
 	var refreshResp RefreshResponse
 	if err := json.Unmarshal(body, &refreshResp); err != nil {
-		return "", "", err
+		return "", "", 0, err
 	}
 
 	newAccessToken := refreshResp.AccessToken
@@ -66,7 +68,7 @@ func RefreshToken(refreshToken string) (string, string, error) {
 		newRefreshToken = refreshResp.RefreshToken
 	}
 
-	return newAccessToken, newRefreshToken, nil
+	return newAccessToken, newRefreshToken, refreshResp.ExpiresIn, nil
 }
 
 // SaveTokens saves a slice of Tokens to the database/tokens.json file.
