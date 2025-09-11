@@ -46,20 +46,27 @@ func startTokenRefreshRoutine() {
 		for range ticker.C {
 			log.Println("Starting token refresh process...")
 			tokensMux.Lock()
+			var refreshedTokens []internal.Token
 			for i, token := range tokens {
 				newAccessToken, newRefreshToken, expiresIn, err := internal.RefreshToken(token.RefreshToken)
 				if err != nil {
-					log.Printf("Failed to refresh token for index %d: %v", i, err)
-					continue
+					log.Printf("Failed to refresh token for index %d, removing it: %v", i, err)
+					continue // Skip and remove this token
 				}
-				tokens[i].AccessToken = newAccessToken
-				tokens[i].RefreshToken = newRefreshToken
-				// Calculate ExpiryDate from expiresIn
+				if newAccessToken == "" {
+					log.Printf("Refreshed token is empty for index %d, removing it.", i)
+					continue // Skip and remove this token
+				}
+
+				token.AccessToken = newAccessToken
+				token.RefreshToken = newRefreshToken
 				if expiresIn > 0 {
-					tokens[i].ExpiryDate = time.Now().Add(time.Duration(expiresIn) * time.Second).UnixMilli()
+					token.ExpiryDate = time.Now().Add(time.Duration(expiresIn) * time.Second).UnixMilli()
 				}
+				refreshedTokens = append(refreshedTokens, token)
 				log.Printf("Successfully refreshed token for index %d", i)
 			}
+			tokens = refreshedTokens
 			if err := internal.SaveTokens(tokens); err != nil {
 				log.Printf("Failed to save tokens after refresh: %v", err)
 			}
