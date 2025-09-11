@@ -274,6 +274,62 @@ func tokenStatusHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(statusList)
 }
 
+func refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var reqBody struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if reqBody.RefreshToken == "" {
+		http.Error(w, "refresh_token is required", http.StatusBadRequest)
+		return
+	}
+
+	tokensMux.Lock()
+	defer tokensMux.Unlock()
+
+	var found bool
+	for i, token := range tokens {
+		if token.RefreshToken == reqBody.RefreshToken {
+			newAccessToken, newRefreshToken, expiresIn, err := internal.RefreshToken(token.RefreshToken)
+			if err != nil {
+				http.Error(w, "Failed to refresh token", http.StatusInternalServerError)
+				log.Printf("Failed to refresh token for %s: %v", token.RefreshToken, err)
+				return
+			}
+
+			tokens[i].AccessToken = newAccessToken
+			tokens[i].RefreshToken = newRefreshToken
+			if expiresIn > 0 {
+				tokens[i].ExpiryDate = time.Now().Add(time.Duration(expiresIn) * time.Second).UnixMilli()
+			}
+
+			if err := internal.SaveTokens(tokens); err != nil {
+				http.Error(w, "Failed to save tokens after refresh", http.StatusInternalServerError)
+				log.Printf("Failed to save tokens after refresh: %v", err)
+				return
+			}
+
+			found = true
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"message": "Token refreshed successfully"})
+			break
+		}
+	}
+
+	if !found {
+		http.Error(w, "Token not found", http.StatusNotFound)
+	}
+}
+
 // authMiddleware verifies the service API key from the Authorization header.
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -326,6 +382,7 @@ func main() {
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/api/upload-token", uploadTokenHandler)
 	apiMux.HandleFunc("/api/token-status", tokenStatusHandler)
+	apiMux.HandleFunc("/api/refresh-token", refreshTokenHandler)
 
 	http.Handle("/api/", authMiddleware(apiMux))
 
