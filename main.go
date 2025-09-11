@@ -53,10 +53,12 @@ func startTokenRefreshRoutine() {
 					log.Printf("Failed to refresh token for index %d, removing it: %v", i, err)
 					continue // Skip and remove this token
 				}
-				if newAccessToken == "" {
-					log.Printf("Refreshed token is empty for index %d, removing it.", i)
+				trimmedAccessToken := strings.TrimSpace(newAccessToken)
+				if trimmedAccessToken == "" {
+					log.Printf("Refreshed token is empty or contains only whitespace for index %d, removing it.", i)
 					continue // Skip and remove this token
 				}
+				newAccessToken = trimmedAccessToken
 
 				token.AccessToken = newAccessToken
 				token.RefreshToken = newRefreshToken
@@ -237,13 +239,6 @@ func uploadTokenHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Token uploaded successfully"})
 }
 
-// TokenStatus defines the structure for displaying token status without exposing sensitive information.
-type TokenStatus struct {
-	AccessToken      string `json:"access_token_preview"`
-	ExpiresAt        string `json:"expires_at"`
-	ExpiresInSeconds int64  `json:"expires_in_seconds"`
-}
-
 func tokenStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Only GET method is allowed", http.StatusMethodNotAllowed)
@@ -253,32 +248,12 @@ func tokenStatusHandler(w http.ResponseWriter, r *http.Request) {
 	tokensMux.Lock()
 	defer tokensMux.Unlock()
 
-	statusList := make([]TokenStatus, 0, len(tokens))
-	for _, token := range tokens {
-		preview := ""
-		if len(token.AccessToken) > 8 {
-			preview = token.AccessToken[:8] + "..."
-		} else {
-			preview = token.AccessToken
-		}
-
-		var expiresAtStr string
-		var expiresInSeconds int64
-		if token.ExpiryDate > 0 {
-			expiresAtTime := time.UnixMilli(token.ExpiryDate)
-			expiresAtStr = expiresAtTime.Format("2006-01-02 15:04:05")
-			expiresInSeconds = int64(time.Until(expiresAtTime).Seconds())
-		}
-
-		statusList = append(statusList, TokenStatus{
-			AccessToken:      preview,
-			ExpiresAt:        expiresAtStr,
-			ExpiresInSeconds: expiresInSeconds,
-		})
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(statusList)
+	// Return the full token objects
+	if err := json.NewEncoder(w).Encode(tokens); err != nil {
+		log.Printf("Failed to encode tokens for status: %v", err)
+		http.Error(w, "Failed to encode tokens", http.StatusInternalServerError)
+	}
 }
 
 func refreshTokenHandler(w http.ResponseWriter, r *http.Request) {

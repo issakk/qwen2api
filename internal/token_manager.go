@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,11 +29,12 @@ const (
 	dbDir             = "database"
 	tokensFile        = "tokens.json"
 	refreshURL        = "https://chat.qwen.ai/api/v1/oauth2/token"
-	qwenOauthClientID = "qwen-web"
+	qwenOauthClientID = "f0304373b74a44d2b584a3fb70ca9e56"
 )
 
 // RefreshToken sends a request to refresh the access token.
 func RefreshToken(refreshToken string) (string, string, int, error) {
+	log.Printf("Attempting to refresh token: %s...", refreshToken[:10]) // Log first 10 chars for identification
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
@@ -40,6 +42,7 @@ func RefreshToken(refreshToken string) (string, string, int, error) {
 
 	req, err := http.NewRequest("POST", refreshURL, strings.NewReader(data.Encode()))
 	if err != nil {
+		log.Printf("Failed to create refresh request: %v", err)
 		return "", "", 0, err
 	}
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
@@ -47,17 +50,21 @@ func RefreshToken(refreshToken string) (string, string, int, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("Failed to send refresh request: %v", err)
 		return "", "", 0, err
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		log.Printf("Failed to read refresh response body: %v", err)
 		return "", "", 0, err
 	}
+	log.Printf("Refresh token response body: %s", string(body))
 
 	var refreshResp RefreshResponse
 	if err := json.Unmarshal(body, &refreshResp); err != nil {
+		log.Printf("Failed to unmarshal refresh response: %v. Body: %s", err, string(body))
 		return "", "", 0, err
 	}
 
@@ -67,6 +74,7 @@ func RefreshToken(refreshToken string) (string, string, int, error) {
 		newRefreshToken = refreshResp.RefreshToken
 	}
 
+	log.Printf("Token refreshed successfully. New Access Token Preview: %s...", newAccessToken[:8])
 	return newAccessToken, newRefreshToken, refreshResp.ExpiresIn, nil
 }
 
